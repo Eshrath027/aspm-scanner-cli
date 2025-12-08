@@ -148,6 +148,7 @@ class SASTScanner:
             # Load existing JSON
             with open(self.result_file, 'r') as file:
                 data = json.load(file)
+            Logger.get_logger().info(f"results.json : {data}")
 
             # Ensure data is a dict
             if not isinstance(data, dict):
