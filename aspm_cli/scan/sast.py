@@ -39,6 +39,9 @@ class SASTScanner:
         try:
             Logger.get_logger().debug("Starting SAST scan...")
 
+            # List all files in repository
+            self._list_repo_files()
+
             if self.container_mode:
                 docker_pull(self.opengrep_image)
 
@@ -46,6 +49,7 @@ class SASTScanner:
             cmd = self._build_sast_command(args)
 
             Logger.get_logger().debug(f"Running SAST scan: {' '.join(cmd)}")
+            Logger.get_logger().info(f"Scanning repository at: {os.getcwd()}")
             result = subprocess.run(cmd, capture_output=True, text=True, check=False)
 
             # Log outputs
@@ -124,6 +128,7 @@ class SASTScanner:
         sanitized_args.extend([
             "--json",
             "--output", self.result_file,
+            "--verbose"
         ])
 
         return sanitized_args
@@ -157,6 +162,20 @@ class SASTScanner:
                     data = data[0]
                 else:
                     data = {}
+
+            # Log which files were scanned
+            results = data.get("results", [])
+            scanned_files = set()
+            for result in results:
+                file_path = result.get("path", "")
+                if file_path:
+                    scanned_files.add(file_path)
+
+            if scanned_files:
+                Logger.get_logger().info(f"Files scanned with findings: {len(scanned_files)}")
+                Logger.get_logger().debug("Files with findings:")
+                for file_path in sorted(scanned_files):
+                    Logger.get_logger().debug(f"  - {file_path}")
 
             path = urlparse(self.repo_url).path  # e.g., /org/repo.git
             repo_name = os.path.basename(path).replace(".git", "")
@@ -217,3 +236,27 @@ class SASTScanner:
         except Exception as e:
             Logger.get_logger().error(f"Error reading scan results: {e}")
             raise
+
+    def _list_repo_files(self):
+        """List all files in the repository for verbose mode"""
+        try:
+            import pathlib
+            cwd = pathlib.Path(os.getcwd())
+
+            # Get all files, excluding common ignore patterns
+            ignore_patterns = {'.git', '__pycache__', 'node_modules', '.venv', 'venv', 'dist', 'build', '.pytest_cache'}
+            all_files = []
+
+            for file_path in cwd.rglob('*'):
+                if file_path.is_file():
+                    # Check if any parent directory should be ignored
+                    if not any(pattern in file_path.parts for pattern in ignore_patterns):
+                        all_files.append(str(file_path.relative_to(cwd)))
+
+            Logger.get_logger().info(f"Total files found in repository: {len(all_files)}")
+            Logger.get_logger().debug("Files in repository:")
+            for file in sorted(all_files):
+                Logger.get_logger().debug(f"  - {file}")
+
+        except Exception as e:
+            Logger.get_logger().debug(f"Error listing repository files: {e}")
