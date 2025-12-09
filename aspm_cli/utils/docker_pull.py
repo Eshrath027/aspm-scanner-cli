@@ -26,4 +26,4 @@ def docker_pull(image: str):
         raise RuntimeError(f"Failed to pull image: {image}")
     else:
         Logger.get_logger().debug(result.stdout)
-        Logger.get_logger().debug(f"Successfully pulled image: {image}")
+        Logger.get_logger().info(f"Successfully pulled image: {image}")
