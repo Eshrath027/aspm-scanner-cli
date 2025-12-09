@@ -222,41 +222,36 @@ class SASTScanner:
         :return: List of command arguments
         """
 
-        prompt = f"""You are a security analysis tool. Read the file /workspace/results.json and analyze each security finding.
+        system_prompt = """You are a security analysis expert. Your task is to analyze SAST findings and determine if they are real vulnerabilities or false positives.
 
-        TASK: For EACH item in the "results" array, add two new fields:
-        - "is_false_positive": boolean (true if safe code, false if real vulnerability)
-        - "validation_reason": string (brief explanation of your determination)
+For each finding, you must:
+1. Read the source code file at the given path
+2. Examine the code at the specified line numbers
+3. Determine if it's a real security vulnerability or false positive
+4. Consider: input validation, framework protections, code context, exploitability
 
-        ANALYSIS APPROACH:
-        1. Read the source code file at the "path" field
-        2. Examine the code at lines from "start.line" to "end.line" and verify them against the source code
-        3. Determine if it's a real security vulnerability or false positive
-        4. Consider: input validation, framework protections, code context, exploitability
+Output ONLY valid JSON with the same structure as input, adding these two fields to each result:
+- "is_false_positive": boolean (true if safe code, false if real vulnerability)
+- "validation_reason": string (brief explanation)"""
 
-        OUTPUT FORMAT: JSON with the same structure as input, but with the two new fields added to each result.
-        
-        IMPORTANT:
-        - Do NOT ask for approval or confirmation
-        - Do NOT execute any code
-        - Just read files, analyze, and output JSON
-        - Return the COMPLETE original JSON structure with the two new fields added to each result
-        - Output ONLY the JSON object - no markdown blocks, no explanations, no commentary
+        user_prompt = """Read the file /workspace/results.json and analyze each security finding.
 
-        Begin now."""
-        
+Add the two new fields (is_false_positive and validation_reason) to EACH item in the "results" array.
+
+Return the COMPLETE JSON structure with all original fields preserved and the two new fields added.
+
+Output ONLY the JSON object - no markdown blocks, no explanations, no additional text."""
+
         if not self.container_mode:
-            cmd = ["claude", "--system-prompt", prompt]
+            cmd = ["claude", "--system-prompt", system_prompt, user_prompt]
         else:
-
             cmd = [
                 "docker", "run", "--rm",
                 "-e", f"ANTHROPIC_API_KEY={self.antropic_api_key}",
-                "-v", f"{os.getcwd()}:/workspace:ro",
+                "-v", f"{os.getcwd()}:/workspace",
                 self.claude_image,
-                "claude", "--system-prompt", prompt
+                "claude", "--system-prompt", system_prompt, user_prompt
             ]
-
 
         return cmd    
 
