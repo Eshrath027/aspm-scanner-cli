@@ -77,18 +77,21 @@ class SASTScanner:
             if os.path.exists(self.result_file) and os.stat(self.result_file).st_size > 0:
                 self._fix_file_permissions_if_docker()
                 self.process_result_file()
+
+                # Run AI analysis if enabled (before checking severity threshold)
+                if self.ai_analysis:
+                    try:
+                        Logger.get_logger().debug("Starting AI analysis of SAST results...")
+                        self._run_ai_analysis()
+                    except Exception as e:
+                        Logger.get_logger().error(f"AI analysis failed: {e}")
+
+                # Check severity threshold and return appropriate exit code
                 if self._severity_threshold_met():
                     Logger.get_logger().error(f"Vulnerabilities matching severities: {', '.join(self.severity)} found.")
                     return 1, self.result_file
-                
-                if result.returncode == 0:
-                    Logger.get_logger().debug("SAST scan completed successfully with no matching vulnerabilities.")
-                    if self.ai_analysis:
-                        try:
-                            Logger.get_logger().debug("Starting AI analysis of SAST results...")
-                            self._run_ai_analysis()
-                        except Exception as e:
-                            Logger.get_logger().error(f"AI analysis failed: {e}")
+
+                Logger.get_logger().debug("SAST scan completed successfully with no matching vulnerabilities.")
                 return 0, self.result_file
             else:
                 return config.SOMETHING_WENT_WRONG_RETURN_CODE, None
