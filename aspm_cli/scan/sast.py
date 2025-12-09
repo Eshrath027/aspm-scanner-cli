@@ -116,7 +116,7 @@ class SASTScanner:
                 current_data = json.load(f)
 
             results = current_data.get("results", [])
-            Logger.get_logger().debug(f"Running Claude AI analysis: {len(results)} findings to analyze.")
+            Logger.get_logger().info(f"Running Claude AI analysis: {len(results)} findings to analyze.")
             
             if not results or len(results) == 0:
                 Logger.get_logger().debug("No results to analyze. Skipping AI analysis.")
@@ -126,14 +126,21 @@ class SASTScanner:
                 docker_pull(self.claude_image)
 
             cmd = self._build_claude_command()
-            Logger.get_logger().debug(f"Running Claude AI analysis: {' '.join(cmd[:5])}...")
+            Logger.get_logger().info(f"Running Claude AI analysis with {len(results)} findings...")
+            Logger.get_logger().info(f"Claude command (first 5 args): {' '.join(cmd[:5])}...")
+            Logger.get_logger().info(f"Full command has {len(cmd)} arguments")
             ai_result = subprocess.run(cmd, capture_output=True, text=True, check=False)
 
             if ai_result.stderr:
-                Logger.get_logger().debug(f"Claude analysis errors: {ai_result.stderr}")
+                Logger.get_logger().info(f"Claude analysis stderr: {ai_result.stderr}")
 
             if ai_result.returncode != 0:
-                Logger.get_logger().warning(f"AI analysis failed with exit code: {ai_result.returncode}. Continuing with original results.")
+                Logger.get_logger().info(f"AI analysis failed with exit code: {ai_result.returncode}.")
+                if ai_result.stderr:
+                    Logger.get_logger().warning(f"Error details: {ai_result.stderr[:500]}")
+                if ai_result.stdout:
+                    Logger.get_logger().info(f"Claude stdout: {ai_result.stdout[:500]}")
+                Logger.get_logger().warning("Continuing with original results.")
                 return
 
             if not ai_result.stdout:
@@ -142,8 +149,8 @@ class SASTScanner:
 
             # Extract JSON from Claude's output (remove markdown code blocks if present)
             output = ai_result.stdout.strip()
-            print(f"[DEBUG] Raw AI output length: {len(output)}")
-            print(f"[DEBUG] First 200 chars: {output[:200]}")
+            Logger.get_logger().info(f"[DEBUG] Raw AI output length: {len(output)}")
+            Logger.get_logger().info(f"[DEBUG] First 200 chars: {output[:200]}")
 
             # Try to extract JSON from markdown code blocks
             if "```json" in output:
