@@ -35,7 +35,7 @@ def upload_results(file_path, endpoint, label, token, tenant_id, data_type):
     upload_exit_code = 1
     with open(file_path, 'r') as f:
         content = f.read()  
-        print(Fore.BLUE + "\nScan Results:\n" + Fore.RESET + content)
+        print(Fore.BLUE + "\nScan Results:\n" + Fore.RESET + len(content),content[:500] )
     """Uploads scan results to the AccuKnox endpoint."""
     if not os.path.exists(file_path):
         Logger.get_logger().warning(f"Result file not found: {file_path}. Skipping upload.")
