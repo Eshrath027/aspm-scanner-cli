@@ -32,11 +32,13 @@ def print_banner():
         print(Fore.BLUE + "ACCUKNOX ASPM SCANNER")
 
 def upload_results(file_path, endpoint, label, token, tenant_id, data_type):
+    """Uploads scan results to the AccuKnox endpoint."""
     upload_exit_code = 1
     with open(file_path, 'r') as f:
-        content = f.read()  
-        print(Fore.BLUE + "\nScan Results:\n" + Fore.RESET + len(content),content[:500] )
-    """Uploads scan results to the AccuKnox endpoint."""
+        content = f.read()
+        print(Fore.BLUE + "\nScan Results:\n" + Fore.RESET)
+        print(f"File size: {len(content)} characters")
+        print(f"First 500 chars: {content[:500]}")
     if not os.path.exists(file_path):
         Logger.get_logger().warning(f"Result file not found: {file_path}. Skipping upload.")
         return
