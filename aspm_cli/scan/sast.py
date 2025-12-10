@@ -86,13 +86,26 @@ class SASTScanner:
                     except Exception as e:
                         Logger.get_logger().error(f"AI analysis failed: {e}")
 
+                if os.path.exists(self.result_file) and os.stat(self.result_file).st_size > 0:
+                    print(f"SAST scan results saved to: {self.result_file}")
+                    with open(self.result_file, 'r') as f:
+                        print_data = json.load(f)
+                    print(f"[DEBUG] Final scan results: {print_data}")
+
                 # Check severity threshold and return appropriate exit code
                 if self._severity_threshold_met():
                     Logger.get_logger().error(f"Vulnerabilities matching severities: {', '.join(self.severity)} found.")
+                    if os.path.exists(self.result_file) and os.stat(self.result_file).st_size > 0:
+                        print(f"SAST scan results saved to: {self.result_file}")
+                        with open(self.result_file, 'r') as f:
+                            print_data = json.load(f)
+                        print(f"[DEBUG] Final scan results: {print_data}")
                     return 1, self.result_file
 
                 Logger.get_logger().debug("SAST scan completed successfully with no matching vulnerabilities.")
+
                 return 0, self.result_file
+
             else:
                 return config.SOMETHING_WENT_WRONG_RETURN_CODE, None
 
