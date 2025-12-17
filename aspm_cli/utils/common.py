@@ -51,7 +51,8 @@ def upload_results(file_path, endpoint, label, token, tenant_id, data_type):
         headers["Tenant-Id"] = tenant_id
     params = {
         "data_type": data_type,
-        "label_id": label
+        "label_id": label,
+        "save_to_s3": "true"
     }
     if tenant_id:
         params["tenant_id"] = tenant_id
