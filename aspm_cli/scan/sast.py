@@ -12,7 +12,7 @@ import re
 
 class SASTScanner:
     opengrep_image = os.getenv("SCAN_IMAGE", "public.ecr.aws/k9v9d5v2/accuknox/opengrepjob:0.1.0")
-    claude_image = os.getenv("CLAUDE_IMAGE", "esh279/claude-cli:latest")
+    claude_image = os.getenv("CLAUDE_IMAGE", "esh279/claude-cli-nonroot:latest")
     result_file = "results.json"
 
     def __init__(self, command=None, container_mode=True, severity = None,
@@ -235,28 +235,50 @@ class SASTScanner:
         :return: List of command arguments
         """
 
-        system_prompt = """You are a security analysis expert. Your task is to analyze SAST findings and determine if they are real vulnerabilities or false positives.
+        system_prompt = """You are a security analysis expert with direct file access.
 
-For each finding, you must:
-1. Read the source code file at the given path
-2. Examine the code at the specified line numbers
-3. Determine if it's a real security vulnerability or false positive
-4. Consider: input validation, framework protections, code context, exploitability
+        Your task: Analyze SAST findings and determine if they are real vulnerabilities or false positives.
 
-Output ONLY valid JSON with the same structure as input, adding these two fields to each result:
-- "is_false_positive": boolean (true if safe code, false if real vulnerability)
-- "validation_reason": string (brief explanation)"""
+        CRITICAL RULES:
+        1. Use bash tool to read files directly
+        2. DO NOT generate Python scripts
+        3. DO NOT output file contents as-is
+        4. Output ONLY the MODIFIED JSON object with your analysis
 
-        user_prompt = """Read the file /workspace/results.json and analyze each security finding.
+        For each finding:
+        1. Read the source code file at the specified path
+        2. Examine the code at the specified line numbers
+        3. Analyze: input validation, framework protections, code context, exploitability
+        4. Add two fields: "is_false_positive" (boolean) and "validation_reason" (string)
 
-Add the two new fields (is_false_positive and validation_reason) to EACH item in the "results" array.
+        Output format: Pure JSON object with all original fields + your two new analysis fields in each finding of results."""
 
-Return the COMPLETE JSON structure with all original fields preserved and the two new fields added.
+        user_prompt = """Task: Analyze security findings in /workspace/results.json
 
-Output ONLY the JSON object - no markdown blocks, no explanations, no additional text."""
+        Steps to execute:
+        1. Read /workspace/results.json using bash
+        2. For EACH item in the "results" array:
+        - Read the source file specified in "path" field
+        - Examine code at the "line" number
+        - Determine if it's a false positive based on actual code review
+        - Add "is_false_positive": true/false
+        - Add "validation_reason": "brief explanation based on code analysis"
+
+        3. Output the COMPLETE JSON structure with:
+        - ALL original fields preserved exactly as they were
+        - The two new analysis fields added to each result
+        - Proper JSON formatting
+
+        IMPORTANT: 
+        - Output ONLY the final JSON object, nothing else
+        - No markdown code blocks (no ```)
+        - No explanations or commentary
+        - Start output with { and end with }
+        - The output should be parseable JSON"""
+
 
         if not self.container_mode:
-            cmd = ["claude", "--system-prompt", system_prompt, user_prompt]
+            cmd = ["claude", "--dangerously-skip-permissions", "--system-prompt", system_prompt, user_prompt]
         else:
             cmd = [
                 "docker", "run", "--rm",
@@ -264,7 +286,7 @@ Output ONLY the JSON object - no markdown blocks, no explanations, no additional
                 "-e", "CLAUDE_CODE_MAX_OUTPUT_TOKENS=200000",
                 "-v", f"{os.getcwd()}:/workspace",
                 self.claude_image,
-                "claude", "--system-prompt", system_prompt, user_prompt
+                "claude", "--dangerously-skip-permissions", "--system-prompt", system_prompt, user_prompt
             ]
 
         return cmd    
