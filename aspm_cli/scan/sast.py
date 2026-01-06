@@ -12,7 +12,7 @@ import re
 
 class SASTScanner:
     opengrep_image = os.getenv("SCAN_IMAGE", "public.ecr.aws/k9v9d5v2/accuknox/opengrepjob:0.1.0")
-    claude_image = os.getenv("CLAUDE_IMAGE", "esh279/claude-cli-nonroot:latest")
+    claude_image = os.getenv("CLAUDE_IMAGE", "public.ecr.aws/k9v9d5v2/accuknox/ai-sast-claude-cli:latest")
     result_file = "results.json"
 
     def __init__(self, command=None, container_mode=True, severity = None,
