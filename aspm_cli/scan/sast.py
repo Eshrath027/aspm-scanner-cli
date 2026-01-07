@@ -254,7 +254,7 @@ class SASTScanner:
 
 
         if not self.container_mode:
-            cmd = ["claude", "--system-prompt", system_prompt, user_prompt]
+            cmd = ["claude","--system-prompt", system_prompt, user_prompt]
         else:
             cmd = [
                 "docker", "run", "--rm",
