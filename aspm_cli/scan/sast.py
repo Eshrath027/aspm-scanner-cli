@@ -94,34 +94,75 @@ class SASTScanner:
             Logger.get_logger().error(f"Error during SAST scan: {e}")
             raise
 
+    def map_risk_level(risk_level: str) -> str:
+        risk_mapping = {
+            "UNKNOWN": "Unknown",
+            "INFORMATIONAL": "Informational",
+            "LOW": "Low",
+            "MEDIUM": "Medium",
+            "HIGH": "High",
+            "CRITICAL": "Critical",
+            "NOT_AVAILABLE": "Not_available",
+        }
+
+        return risk_mapping.get(risk_level.upper(), "Unknown")
 
     def _run_ai_analysis(self):
         """
-        Runs AI analysis on the results. If any error occurs, the original results are preserved.
-        This ensures the scan continues successfully even if AI analysis fails.
+        Runs AI analysis on the results. Only findings whose severity matches self.severity
+        are sent to Claude for analysis. If any error occurs, the original results are preserved.
         """
         try:
             if not self.anthropic_api_key:
                 Logger.get_logger().warning("Anthropic API key not provided. Skipping AI analysis.")
                 return
-            
+
             if self.container_mode:
                 docker_pull(self.claude_image)
 
-            # Check if there are any results to analyze
+            # Load the full result data
             with open(self.result_file, 'r') as f:
                 current_data = json.load(f)
 
-            results = current_data.get("results", [])
-            Logger.get_logger().info(f"Running Claude AI analysis: {len(results)} findings to analyze.")
-            
-            if not results or len(results) == 0:
+            all_results = current_data.get("results", [])
+            if not all_results:
                 Logger.get_logger().debug("No results to analyze. Skipping AI analysis.")
                 return
 
+            # Split findings: only analyze those matching the configured severities
+            to_analyze = []
+            for finding in all_results:
+                extra = finding.get("extra", {})
+                metadata = extra.get("metadata", {})
+                severity = self.map_risk_level(metadata.get("impact", ""))
+                # severity = finding.get("extra", {}).get("severity", "").upper()
+                if severity in self.severity:
+                    to_analyze.append(finding)
+
+            if not to_analyze:
+                Logger.get_logger().info(
+                    f"No findings with severities {self.severity} found. Skipping AI analysis."
+                )
+                return
+
+            Logger.get_logger().info(
+                f"Running Claude AI analysis on {len(to_analyze)} of {len(all_results)} findings "
+                f"(severities: {', '.join(self.severity)})."
+            )
+
+            # Temporarily write only the severity-matching findings so Claude analyses those
+            filtered_data = dict(current_data)
+            filtered_data["results"] = to_analyze
+            with open(self.result_file, 'w') as f:
+                json.dump(filtered_data, f, indent=2)
 
             cmd = self._build_claude_command()
             ai_result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+
+            # Restore the full results immediately so we never lose data on failure
+            current_data["results"] = all_results
+            with open(self.result_file, 'w') as f:
+                json.dump(current_data, f, indent=2)
 
             if ai_result.stderr:
                 Logger.get_logger().info(f"Claude analysis stderr: {ai_result.stderr}")
@@ -141,7 +182,6 @@ class SASTScanner:
 
             # Extract JSON from Claude's output (remove markdown code blocks if present)
             output = ai_result.stdout.strip()
-            # Try to extract JSON from markdown code blocks
             if "```json" in output:
                 json_start = output.find("```json") + 7
                 json_end = output.find("```", json_start)
@@ -161,29 +201,41 @@ class SASTScanner:
                 )
                 if json_start < len(output):
                     output = output[json_start:]
-                   
 
             # Parse the AI output
-            updated_results = json.loads(output)
-            
+            ai_output = json.loads(output)
 
             # Validate the structure
-            if not isinstance(updated_results, dict) or "results" not in updated_results:
+            if not isinstance(ai_output, dict) or "results" not in ai_output:
                 Logger.get_logger().warning("AI analysis output missing 'results' field. Continuing with original results.")
                 return
 
-            # Preserve metadata fields that were added by process_result_file
-            metadata_fields = ['repo', 'sha', 'ref', 'run_id', 'repo_url', 'repo_run_url']
-            for field in metadata_fields:
-                if field in current_data:
-                    updated_results[field] = current_data[field]
+            analyzed_findings = ai_output.get("results", [])
 
-            # Write the updated results
+            # Build a lookup from (path, check_id, start_line) -> analyzed finding
+            def _finding_key(f):
+                start = f.get("start", {})
+                return (f.get("path", ""), f.get("check_id", ""), start.get("line", -1))
+
+            analyzed_map = {_finding_key(f): f for f in analyzed_findings}
+
+            # Merge: replace original findings with their AI-analyzed versions where available
+            merged_results = []
+            for finding in all_results:
+                key = _finding_key(finding)
+                merged_results.append(analyzed_map.get(key, finding))
+
+            # Build final data preserving all metadata
+            final_data = dict(current_data)
+            final_data["results"] = merged_results
+
             with open(self.result_file, 'w') as f:
-                json.dump(updated_results, f, indent=2)
+                json.dump(final_data, f, indent=2)
 
-           
-            Logger.get_logger().debug("AI analysis completed successfully and results updated.")
+            Logger.get_logger().debug(
+                f"AI analysis completed. {len(analyzed_findings)} findings enriched, "
+                f"{len(all_results) - len(analyzed_findings)} skipped."
+            )
 
         except json.JSONDecodeError as e:
             Logger.get_logger().warning(f"Failed to parse Claude output as JSON: {e}. Continuing with original results.")
