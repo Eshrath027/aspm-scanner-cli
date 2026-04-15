@@ -11,8 +11,8 @@ from urllib.parse import urlparse
 import re
 
 class SASTScanner:
-    opengrep_image = os.getenv("SCAN_IMAGE", "public.ecr.aws/k9v9d5v2/accuknox/opengrepjob:0.1.0")
-    codeassure_image = os.getenv("CODEASSURE_IMAGE", "public.ecr.aws/k9v9d5v2/accuknox/ai-sast-codeassure-cli:0.1.0")
+    opengrep_image = os.getenv("SCAN_IMAGE", "esh279/opengrepjob:0.1.0")
+    codeassure_image = os.getenv("CODEASSURE_IMAGE", "esh279/codeassure-cli:0.1.4")
     result_file = "results.json"
 
     def __init__(self, command=None, container_mode=True, severity = None,
@@ -120,7 +120,7 @@ class SASTScanner:
 
 
             cmd = self._build_ai_analysis_command()
- 
+            Logger.get_logger().info(f"AI analysis command: {' '.join(cmd)}")
             ai_result = subprocess.run(cmd, check=False)
 
             if ai_result.returncode != 0:
@@ -185,9 +185,29 @@ class SASTScanner:
                 "docker", "run", "--rm",
                 "-v", f"{os.getcwd()}:/workspace",
             ]
-            # if self.codeassure_config:
-            #     config_path = os.path.abspath(self.codeassure_config)
-            #     cmd.extend(["-v", f"{config_path}:/workspace/codeassure.json"])
+            if self.codeassure_config:
+                config_path = os.path.abspath(self.codeassure_config)
+            elif os.path.exists(os.path.join(os.getcwd(), "codeassure.json")):
+                config_path = os.path.join(os.getcwd(), "codeassure.json")
+            else:
+                config_path = None
+            if config_path:
+                cmd.extend(["-v", f"{config_path}:/app/codeassure.json"])
+                try:
+                    with open(config_path) as _f:
+                        _cfg = json.load(_f)
+                    _raw_key = _cfg.get("model", {}).get("api_key")
+                    if _raw_key:
+                        if _raw_key.startswith("$"):
+                            env_var_name = _raw_key[1:]
+                            api_key_val = os.environ.get(env_var_name)
+                        else:
+                            env_var_name = "CODEASSURE_API_KEY"
+                            api_key_val = _raw_key
+                        if api_key_val:
+                            cmd.extend(["-e", f"{env_var_name}={api_key_val}"])
+                except Exception:
+                    pass
 
             cmd.extend([
                 self.codeassure_image,
@@ -195,8 +215,6 @@ class SASTScanner:
                 "--findings", "/workspace/results.json",
                 "--output", "/workspace/results.json",
             ])
-            if self.codeassure_config:
-                cmd.extend(["--config", "/workspace/codeassure.json"])
             if self.aiscan_severity:
                 cmd.extend(["--severity", ",".join(self.aiscan_severity)])
 
